@@ -17,7 +17,7 @@ import java.io.IOException;
 import java.util.UUID;
 
 /**
- * Service for charging a shopper using their stored subscription token.
+ * Service for charging using a subscription token (recurringDetailReference / storedPaymentMethodId).
  */
 @Service
 public class SubscriptionService {
@@ -27,25 +27,16 @@ public class SubscriptionService {
 
     private final ApplicationConfiguration applicationConfiguration;
     private final PaymentsApi paymentsApi;
-    private final SubscriptionTokenStore subscriptionTokenStore;
 
-    public SubscriptionService(ApplicationConfiguration applicationConfiguration, PaymentsApi paymentsApi, SubscriptionTokenStore subscriptionTokenStore) {
+    public SubscriptionService(ApplicationConfiguration applicationConfiguration, PaymentsApi paymentsApi) {
         this.applicationConfiguration = applicationConfiguration;
         this.paymentsApi = paymentsApi;
-        this.subscriptionTokenStore = subscriptionTokenStore;
     }
 
     /**
-     * Charge the shopper once using their stored token. Returns the payment response or null if no token.
+     * Charge once using the given token (recurringDetailReference from RECURRING_CONTRACT webhook).
      */
-    public PaymentResponse chargeSubscription(String shopperReference) throws IOException, ApiException {
-        String ref = shopperReference != null ? shopperReference : DEFAULT_SHOPPER_REFERENCE;
-        String token = subscriptionTokenStore.getToken(ref);
-        if (token == null) {
-            log.warn("No stored token for shopperReference {}", ref);
-            return null;
-        }
-
+    public PaymentResponse chargeWithToken(String token) throws IOException, ApiException {
         var storedDetails = new StoredPaymentMethodDetails().storedPaymentMethodId(token);
         var paymentMethod = new CheckoutPaymentMethod(storedDetails);
 
@@ -56,7 +47,7 @@ public class SubscriptionService {
         paymentRequest.setPaymentMethod(paymentMethod);
         paymentRequest.setReference(UUID.randomUUID().toString());
         paymentRequest.setReturnUrl("http://localhost:8080/handleShopperRedirect");
-        paymentRequest.setShopperReference(ref);
+        paymentRequest.setShopperReference(DEFAULT_SHOPPER_REFERENCE);
         paymentRequest.setShopperInteraction(PaymentRequest.ShopperInteractionEnum.CONTAUTH);
         paymentRequest.setRecurringProcessingModel(PaymentRequest.RecurringProcessingModelEnum.SUBSCRIPTION);
         paymentRequest.setCountryCode("NL");
@@ -64,7 +55,7 @@ public class SubscriptionService {
         var requestOptions = new RequestOptions();
         requestOptions.setIdempotencyKey(UUID.randomUUID().toString());
 
-        log.info("Subscription charge for shopper {}", ref);
+        log.info("Subscription charge with token");
         return paymentsApi.payments(paymentRequest, requestOptions);
     }
 }

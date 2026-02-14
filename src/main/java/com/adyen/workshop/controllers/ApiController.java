@@ -4,7 +4,6 @@ import com.adyen.model.RequestOptions;
 import com.adyen.model.checkout.*;
 import com.adyen.workshop.configurations.ApplicationConfiguration;
 import com.adyen.workshop.service.SubscriptionService;
-import com.adyen.workshop.service.SubscriptionTokenStore;
 import com.adyen.service.checkout.PaymentsApi;
 import com.adyen.service.exception.ApiException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -33,13 +32,11 @@ public class ApiController {
 
     private final ApplicationConfiguration applicationConfiguration;
     private final PaymentsApi paymentsApi;
-    private final SubscriptionTokenStore subscriptionTokenStore;
     private final SubscriptionService subscriptionService;
 
-    public ApiController(ApplicationConfiguration applicationConfiguration, PaymentsApi paymentsApi, SubscriptionTokenStore subscriptionTokenStore, SubscriptionService subscriptionService) {
+    public ApiController(ApplicationConfiguration applicationConfiguration, PaymentsApi paymentsApi, SubscriptionService subscriptionService) {
         this.applicationConfiguration = applicationConfiguration;
         this.paymentsApi = paymentsApi;
-        this.subscriptionTokenStore = subscriptionTokenStore;
         this.subscriptionService = subscriptionService;
     }
 
@@ -193,34 +190,13 @@ public class ApiController {
     }
 
     /**
-     * Charge the shopper using their stored subscription token (recurringDetailReference).
-     * Call this when billing for a subscription (e.g. monthly).
+     * Make a payment with a token (recurringDetailReference from RECURRING_CONTRACT webhook).
+     * For testing: copy/paste the token into the URL.
      */
-    @PostMapping("/api/subscription-payment")
-    public ResponseEntity<?> subscriptionPayment(@RequestBody(required = false) Map<String, String> body) throws IOException, ApiException {
-        String shopperRef = (body != null && body.containsKey("shopperReference")) ? body.get("shopperReference") : DEFAULT_SHOPPER_REFERENCE;
-        var response = subscriptionService.chargeSubscription(shopperRef);
-        if (response == null) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "No stored subscription token for shopper. Complete a subscription-create flow first or paste recurringDetailReference via RECURRING_CONTRACT webhook."));
-        }
-        log.info("Subscription-payment response {}", response);
+    @GetMapping("/makepaymentwithtoken/{token}")
+    public ResponseEntity<?> makePaymentWithToken(@PathVariable String token) throws IOException, ApiException {
+        var response = subscriptionService.chargeWithToken(token);
         return ResponseEntity.ok().body(response);
-    }
-
-    /**
-     * Cancel subscription by removing the stored token for the shopper.
-     * Optionally extend to call Adyen to disable the token via API.
-     */
-    @PostMapping("/api/subscriptions-cancel")
-    public ResponseEntity<?> subscriptionsCancel(@RequestBody(required = false) Map<String, String> body) {
-        String shopperRef = (body != null && body.containsKey("shopperReference")) ? body.get("shopperReference") : DEFAULT_SHOPPER_REFERENCE;
-        String removed = subscriptionTokenStore.removeToken(shopperRef);
-        if (removed != null) {
-            log.info("Cancelled subscription (removed token) for shopperReference {}", shopperRef);
-            return ResponseEntity.ok().body(Map.of("cancelled", true, "shopperReference", shopperRef));
-        }
-        log.warn("No token to cancel for shopperReference {}", shopperRef);
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "No stored subscription token for shopper.", "shopperReference", shopperRef));
     }
 
     // Step 13 - Handle details call (triggered after Native 3DS2 flow)

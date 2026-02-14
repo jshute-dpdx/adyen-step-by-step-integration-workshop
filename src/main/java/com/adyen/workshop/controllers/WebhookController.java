@@ -5,7 +5,6 @@ import com.adyen.model.notification.NotificationRequestItem;
 import com.adyen.util.HMACValidator;
 import com.adyen.workshop.configurations.ApplicationConfiguration;
 import org.apache.coyote.Response;
-import com.adyen.workshop.service.SubscriptionTokenStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,23 +29,19 @@ public class WebhookController {
     private static final String EVENT_RECURRING_CONTRACT = "RECURRING_CONTRACT";
     private static final String EVENT_AUTHORISATION = "AUTHORISATION";
     private static final String ADDITIONAL_DATA_RECURRING_DETAIL_REF = "recurring.recurringDetailReference";
-    private static final String ADDITIONAL_DATA_SHOPPER_REF = "shopperReference";
 
     private final ApplicationConfiguration applicationConfiguration;
     private final HMACValidator hmacValidator;
-    private final SubscriptionTokenStore subscriptionTokenStore;
 
     @Autowired
-    public WebhookController(ApplicationConfiguration applicationConfiguration, HMACValidator hmacValidator, SubscriptionTokenStore subscriptionTokenStore) {
+    public WebhookController(ApplicationConfiguration applicationConfiguration, HMACValidator hmacValidator) {
         this.applicationConfiguration = applicationConfiguration;
         this.hmacValidator = hmacValidator;
-        this.subscriptionTokenStore = subscriptionTokenStore;
     }
 
     @PostMapping("/webhooks")
     public ResponseEntity<String> webhooks(@RequestBody String json) throws Exception {
         log.info("Received: {}", json);
-        
         var notificationRequest = NotificationRequest.fromJson(json);
         var notificationRequestItem = notificationRequest.getNotificationItems().stream().findFirst();
 
@@ -63,19 +58,12 @@ public class WebhookController {
             log.info("Received webhook with eventCode {} {}", item.getEventCode(), item.toString());
 
             if (EVENT_RECURRING_CONTRACT.equals(item.getEventCode())) {
-                Map<String, String> additionalData = item.getAdditionalData();
+                var additionalData = item.getAdditionalData();
                 if (additionalData != null) {
-                    String recurringDetailReference = additionalData.get(ADDITIONAL_DATA_RECURRING_DETAIL_REF);
-                    String shopperReference = additionalData.get(ADDITIONAL_DATA_SHOPPER_REF);
-                    if (recurringDetailReference != null) {
-                        String shopperRef = (shopperReference != null && !shopperReference.isEmpty()) ? shopperReference : ADDITIONAL_DATA_SHOPPER_REF;
-                        subscriptionTokenStore.storeToken(shopperRef, recurringDetailReference);
-                        log.info("Stored subscription token for shopperReference {} (recurringDetailReference={})", shopperRef, recurringDetailReference);
-                    } else {
-                        log.warn("RECURRING_CONTRACT webhook missing recurring.recurringDetailReference in additionalData");
+                    String ref = additionalData.get(ADDITIONAL_DATA_RECURRING_DETAIL_REF);
+                    if (ref != null) {
+                        log.info("RECURRING_CONTRACT token (copy for /makepaymentwithtoken/{{}}): {}", ref, ref);
                     }
-                } else {
-                    log.warn("RECURRING_CONTRACT webhook has no additionalData");
                 }
             } else if (EVENT_AUTHORISATION.equals(item.getEventCode())) {
                 log.info("AUTHORISATION webhook: success={}, pspReference={}, merchantReference={}", item.isSuccess(), item.getPspReference(), item.getMerchantReference());
