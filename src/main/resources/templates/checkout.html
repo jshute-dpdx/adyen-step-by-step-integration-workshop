@@ -11,7 +11,13 @@
     <div id="clientKey" class="hidden" th:text="${clientKey}"></div>
     <div id="type" class="hidden" th:text="${type}"></div>
 
-    <div class="container">
+    <!-- Subscription: zero-auth to tokenize card; token is received via RECURRING_CONTRACT webhook. -->
+    <div class="container" style="display: block">
+        <label>
+            <input type="checkbox" id="subscription" name="subscription" />
+            Subscribe (5€/month)
+        </label>
+
         <!-- The Checkout integration type will be rendered below.-->
         <!-- Drop-in includes styling out-of-the-box, so no additional styling is needed. -->
         <div class="payment-container">

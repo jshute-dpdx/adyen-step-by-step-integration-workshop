@@ -3,7 +3,6 @@ const { AdyenCheckout, Dropin } = window.AdyenWeb;
 
 async function startCheckout() {
     try {
-        // ...
         const paymentMethodsResponse = await fetch("/api/paymentMethods", {
             method: "POST",
             headers: {
@@ -23,21 +22,24 @@ async function startCheckout() {
                     'creditCard.securityCode.label': 'CVV/CVC'
                 }
             },
-            // Step 10 - Add the onSubmit handler by telling it what endpoint to call when the pay button is pressed.
+            // Step 10 - Add the onSubmit handler. Use /api/subscription-create when subscription mode is selected (zero-auth to tokenize card).
             onSubmit: async (state, component, actions) => {
                 console.info("onSubmit", state, component, actions);
                 try {
                     if (state.isValid) {
-                        const { action, order, resultCode } = await fetch("/api/payments", {
+                        const endpoint = document.getElementById("subscription").checked ? "/api/subscription-create" : "/api/payments";
+                        const response = await fetch(endpoint, {
                             method: "POST",
                             body: state.data ? JSON.stringify(state.data) : "",
                             headers: {
                                 "Content-Type": "application/json",
                             }
-                        }).then(response => response.json());
+                        });
+                        const data = await response.json();
+                        const { action, order, resultCode } = data;
 
                         if (!resultCode) {
-                            console.warn("reject");
+                            console.warn("reject", data);
                             actions.reject();
                         }
 

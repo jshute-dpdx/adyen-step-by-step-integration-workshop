@@ -3,11 +3,14 @@ package com.adyen.workshop.controllers;
 import com.adyen.model.RequestOptions;
 import com.adyen.model.checkout.*;
 import com.adyen.workshop.configurations.ApplicationConfiguration;
+import com.adyen.workshop.service.SubscriptionService;
+import com.adyen.workshop.service.SubscriptionTokenStore;
 import com.adyen.service.checkout.PaymentsApi;
 import com.adyen.service.exception.ApiException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.view.RedirectView;
@@ -26,12 +29,18 @@ import java.util.UUID;
 public class ApiController {
     private final Logger log = LoggerFactory.getLogger(ApiController.class);
 
+    private static final String DEFAULT_SHOPPER_REFERENCE = "shopperReference";
+
     private final ApplicationConfiguration applicationConfiguration;
     private final PaymentsApi paymentsApi;
+    private final SubscriptionTokenStore subscriptionTokenStore;
+    private final SubscriptionService subscriptionService;
 
-    public ApiController(ApplicationConfiguration applicationConfiguration, PaymentsApi paymentsApi) {
+    public ApiController(ApplicationConfiguration applicationConfiguration, PaymentsApi paymentsApi, SubscriptionTokenStore subscriptionTokenStore, SubscriptionService subscriptionService) {
         this.applicationConfiguration = applicationConfiguration;
         this.paymentsApi = paymentsApi;
+        this.subscriptionTokenStore = subscriptionTokenStore;
+        this.subscriptionService = subscriptionService;
     }
 
     // Step 0
@@ -129,6 +138,89 @@ public class ApiController {
         log.info("PaymentsResponse {}", response);
         
         return ResponseEntity.ok().body(response);
+    }
+
+    /**
+     * Zero-auth payment to tokenize a card for subscriptions.
+     * Uses storePaymentMethod and recurringProcessingModel.
+     * Recurring processing models: Subscription (fixed schedule), CardOnFile (one-click/omnichannel),
+     * UnscheduledCardOnFile (variable amount, non-fixed schedule). This endpoint uses Subscription.
+     * The recurringDetailReference / storedPaymentMethodId is received via RECURRING_CONTRACT or recurring.token.created webhook.
+     */
+    @PostMapping("/api/subscription-create")
+    public ResponseEntity<?> subscriptionCreate(@RequestBody PaymentRequest body) throws IOException, ApiException {
+        var paymentRequest = new PaymentRequest();
+        paymentRequest.setAmount(new Amount().currency("EUR").value(0L));
+        paymentRequest.setMerchantAccount(applicationConfiguration.getAdyenMerchantAccount());
+        paymentRequest.setChannel(PaymentRequest.ChannelEnum.WEB);
+        paymentRequest.setPaymentMethod(body.getPaymentMethod());
+        var orderRef = UUID.randomUUID().toString();
+        paymentRequest.setReference(orderRef);
+        paymentRequest.setReturnUrl("http://localhost:8080/handleShopperRedirect");
+
+        var authenticationData = new AuthenticationData();
+        authenticationData.setAttemptAuthentication(AuthenticationData.AttemptAuthenticationEnum.ALWAYS);
+        paymentRequest.setAuthenticationData(authenticationData);
+
+        paymentRequest.setOrigin("https://localhost:8080");
+        paymentRequest.setBrowserInfo(body.getBrowserInfo());
+        paymentRequest.setShopperIP("192.168.0.1");
+        paymentRequest.setShopperInteraction(PaymentRequest.ShopperInteractionEnum.ECOMMERCE);
+
+        paymentRequest.setStorePaymentMethod(true);
+        paymentRequest.setRecurringProcessingModel(PaymentRequest.RecurringProcessingModelEnum.SUBSCRIPTION);
+
+        String shopperRef = body.getShopperReference() != null ? body.getShopperReference() : DEFAULT_SHOPPER_REFERENCE;
+        paymentRequest.setShopperReference(shopperRef);
+        paymentRequest.setCountryCode("NL");
+        paymentRequest.setShopperEmail(body.getShopperEmail() != null ? body.getShopperEmail() : "example@email.com");
+
+        var billingAddress = new BillingAddress();
+        billingAddress.setCity("Amsterdam");
+        billingAddress.setCountry("NL");
+        billingAddress.setPostalCode("1012KK");
+        billingAddress.setStreet("Rokin");
+        billingAddress.setHouseNumberOrName("49");
+        paymentRequest.setBillingAddress(billingAddress);
+
+        var requestOptions = new RequestOptions();
+        requestOptions.setIdempotencyKey(UUID.randomUUID().toString());
+
+        log.info("Subscription-create (zero-auth) request {}", paymentRequest);
+        var response = paymentsApi.payments(paymentRequest, requestOptions);
+        log.info("Subscription-create response {}", response);
+        return ResponseEntity.ok().body(response);
+    }
+
+    /**
+     * Charge the shopper using their stored subscription token (recurringDetailReference).
+     * Call this when billing for a subscription (e.g. monthly).
+     */
+    @PostMapping("/api/subscription-payment")
+    public ResponseEntity<?> subscriptionPayment(@RequestBody(required = false) Map<String, String> body) throws IOException, ApiException {
+        String shopperRef = (body != null && body.containsKey("shopperReference")) ? body.get("shopperReference") : DEFAULT_SHOPPER_REFERENCE;
+        var response = subscriptionService.chargeSubscription(shopperRef);
+        if (response == null) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "No stored subscription token for shopper. Complete a subscription-create flow first or paste recurringDetailReference via RECURRING_CONTRACT webhook."));
+        }
+        log.info("Subscription-payment response {}", response);
+        return ResponseEntity.ok().body(response);
+    }
+
+    /**
+     * Cancel subscription by removing the stored token for the shopper.
+     * Optionally extend to call Adyen to disable the token via API.
+     */
+    @PostMapping("/api/subscriptions-cancel")
+    public ResponseEntity<?> subscriptionsCancel(@RequestBody(required = false) Map<String, String> body) {
+        String shopperRef = (body != null && body.containsKey("shopperReference")) ? body.get("shopperReference") : DEFAULT_SHOPPER_REFERENCE;
+        String removed = subscriptionTokenStore.removeToken(shopperRef);
+        if (removed != null) {
+            log.info("Cancelled subscription (removed token) for shopperReference {}", shopperRef);
+            return ResponseEntity.ok().body(Map.of("cancelled", true, "shopperReference", shopperRef));
+        }
+        log.warn("No token to cancel for shopperReference {}", shopperRef);
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "No stored subscription token for shopper.", "shopperReference", shopperRef));
     }
 
     // Step 13 - Handle details call (triggered after Native 3DS2 flow)
