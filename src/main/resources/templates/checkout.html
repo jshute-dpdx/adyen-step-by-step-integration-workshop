@@ -11,11 +11,14 @@
     <div id="clientKey" class="hidden" th:text="${clientKey}"></div>
     <div id="type" class="hidden" th:text="${type}"></div>
 
-    <!-- Subscription: zero-auth to tokenize card; token is received via RECURRING_CONTRACT webhook. -->
     <div class="container" style="display: block">
-        <label>
+        <label style="display: block; margin-bottom: 0.5rem;">
             <input type="checkbox" id="subscription" name="subscription" />
             Subscribe (5€/month)
+        </label>
+        <label style="display: block; margin-bottom: 1rem;">
+            <input type="checkbox" id="preauth" name="preauth" />
+            Pre-authorise (reserve 10€, capture later)
         </label>
 
         <!-- The Checkout integration type will be rendered below.-->

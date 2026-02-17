@@ -28,6 +28,11 @@ public class WebhookController {
 
     private static final String EVENT_RECURRING_CONTRACT = "RECURRING_CONTRACT";
     private static final String EVENT_AUTHORISATION = "AUTHORISATION";
+    private static final String EVENT_CAPTURE = "CAPTURE";
+    private static final String EVENT_CAPTURE_FAILED = "CAPTURE_FAILED";
+    private static final String EVENT_REFUND = "REFUND";
+    private static final String EVENT_REFUND_FAILED = "REFUND_FAILED";
+    private static final String EVENT_REFUNDED_REVERSED = "REFUNDED_REVERSED";
     private static final String ADDITIONAL_DATA_RECURRING_DETAIL_REF = "recurring.recurringDetailReference";
 
     private final ApplicationConfiguration applicationConfiguration;
@@ -57,16 +62,15 @@ public class WebhookController {
             // Success, log and handle subscription tokenization
             log.info("Received webhook with eventCode {} {}", item.getEventCode(), item.toString());
 
-            if (EVENT_RECURRING_CONTRACT.equals(item.getEventCode())) {
-                var additionalData = item.getAdditionalData();
-                if (additionalData != null) {
-                    String ref = additionalData.get(ADDITIONAL_DATA_RECURRING_DETAIL_REF);
-                    if (ref != null) {
-                        log.info("RECURRING_CONTRACT token (copy for /makepaymentwithtoken/{{}}): {}", ref, ref);
-                    }
-                }
-            } else if (EVENT_AUTHORISATION.equals(item.getEventCode())) {
-                log.info("AUTHORISATION webhook: success={}, pspReference={}, merchantReference={}", item.isSuccess(), item.getPspReference(), item.getMerchantReference());
+            switch (item.getEventCode()) {
+                case EVENT_RECURRING_CONTRACT -> handleRecurringContract(item);
+                case EVENT_AUTHORISATION -> handleAuthorisation(item);
+                case EVENT_CAPTURE -> handleCapture(item);
+                case EVENT_CAPTURE_FAILED -> handleCaptureFailed(item);
+                case EVENT_REFUND -> handleRefund(item);
+                case EVENT_REFUND_FAILED -> handleRefundFailed(item);
+                case EVENT_REFUNDED_REVERSED -> handleRefundedReversed(item);
+                default -> { }
             }
 
             return ResponseEntity.accepted().build();
@@ -77,5 +81,39 @@ public class WebhookController {
             // Handle all other errors
             return ResponseEntity.status(500).build();
         }
+    }
+
+    private void handleRecurringContract(NotificationRequestItem item) {
+        var additionalData = item.getAdditionalData();
+        if (additionalData != null) {
+            String ref = additionalData.get(ADDITIONAL_DATA_RECURRING_DETAIL_REF);
+            if (ref != null) {
+                log.info("RECURRING_CONTRACT token (copy for /makepaymentwithtoken/{{}}): {}", ref, ref);
+            }
+        }
+    }
+
+    private void handleAuthorisation(NotificationRequestItem item) {
+        log.info("AUTHORISATION: success={}, pspReference={}", item.isSuccess(), item.getPspReference());
+    }
+
+    private void handleCapture(NotificationRequestItem item) {
+        log.info("CAPTURE: success={}, pspReference={}, originalReference={}", item.isSuccess(), item.getPspReference(), item.getOriginalReference());
+    }
+
+    private void handleCaptureFailed(NotificationRequestItem item) {
+        log.warn("CAPTURE_FAILED: pspReference={}, originalReference={}, reason={}", item.getPspReference(), item.getOriginalReference(), item.getReason());
+    }
+
+    private void handleRefund(NotificationRequestItem item) {
+        log.info("REFUND: success={}, pspReference={}, originalReference={}", item.isSuccess(), item.getPspReference(), item.getOriginalReference());
+    }
+
+    private void handleRefundFailed(NotificationRequestItem item) {
+        log.warn("REFUND_FAILED: pspReference={}, originalReference={}, reason={}", item.getPspReference(), item.getOriginalReference(), item.getReason());
+    }
+
+    private void handleRefundedReversed(NotificationRequestItem item) {
+        log.info("REFUNDED_REVERSED: pspReference={}, originalReference={}", item.getPspReference(), item.getOriginalReference());
     }
 }

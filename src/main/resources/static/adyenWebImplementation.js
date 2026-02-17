@@ -22,12 +22,15 @@ async function startCheckout() {
                     'creditCard.securityCode.label': 'CVV/CVC'
                 }
             },
-            // Step 10 - Add the onSubmit handler. Use /api/subscription-create when subscription mode is selected (zero-auth to tokenize card).
             onSubmit: async (state, component, actions) => {
                 console.info("onSubmit", state, component, actions);
                 try {
                     if (state.isValid) {
-                        const endpoint = document.getElementById("subscription").checked ? "/api/subscription-create" : "/api/payments";
+                        const subscription = document.getElementById("subscription").checked;
+                        const preauth = document.getElementById("preauth").checked;
+                        let endpoint = "/api/payments";
+                        if (subscription) endpoint = "/api/subscription-create";
+                        else if (preauth) endpoint = "/api/preauthorisation";
                         const response = await fetch(endpoint, {
                             method: "POST",
                             body: state.data ? JSON.stringify(state.data) : "",

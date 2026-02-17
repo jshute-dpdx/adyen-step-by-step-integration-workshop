@@ -23,7 +23,7 @@ import java.util.UUID;
 public class SubscriptionService {
     private static final Logger log = LoggerFactory.getLogger(SubscriptionService.class);
     private static final String DEFAULT_SHOPPER_REFERENCE = "shopperReference";
-    private static final long SUBSCRIPTION_AMOUNT_CENTS = 500L;
+    private static final long DEFAULT_AMOUNT_CENTS = 500L;
 
     private final ApplicationConfiguration applicationConfiguration;
     private final PaymentsApi paymentsApi;
@@ -35,13 +35,15 @@ public class SubscriptionService {
 
     /**
      * Charge once using the given token (recurringDetailReference from RECURRING_CONTRACT webhook).
+     * @param amountMinorUnits amount in minor units (e.g. 500 = 5.00 EUR). If null, uses default.
      */
-    public PaymentResponse chargeWithToken(String token) throws IOException, ApiException {
+    public PaymentResponse chargeWithToken(String token, Long amountMinorUnits) throws IOException, ApiException {
+        long amount = amountMinorUnits != null ? amountMinorUnits : DEFAULT_AMOUNT_CENTS;
         var storedDetails = new StoredPaymentMethodDetails().storedPaymentMethodId(token);
         var paymentMethod = new CheckoutPaymentMethod(storedDetails);
 
         var paymentRequest = new PaymentRequest();
-        paymentRequest.setAmount(new Amount().currency("EUR").value(SUBSCRIPTION_AMOUNT_CENTS));
+        paymentRequest.setAmount(new Amount().currency("EUR").value(amount));
         paymentRequest.setMerchantAccount(applicationConfiguration.getAdyenMerchantAccount());
         paymentRequest.setChannel(PaymentRequest.ChannelEnum.WEB);
         paymentRequest.setPaymentMethod(paymentMethod);

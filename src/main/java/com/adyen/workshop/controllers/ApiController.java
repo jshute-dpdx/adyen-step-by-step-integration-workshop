@@ -4,6 +4,7 @@ import com.adyen.model.RequestOptions;
 import com.adyen.model.checkout.*;
 import com.adyen.workshop.configurations.ApplicationConfiguration;
 import com.adyen.workshop.service.SubscriptionService;
+import com.adyen.service.checkout.ModificationsApi;
 import com.adyen.service.checkout.PaymentsApi;
 import com.adyen.service.exception.ApiException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -30,13 +31,18 @@ public class ApiController {
 
     private static final String DEFAULT_SHOPPER_REFERENCE = "shopperReference";
 
+    private static final long DEFAULT_PREAUTH_CENTS = 1000L;   // 10.00 EUR
+    private static final long DEFAULT_MODIFY_CENTS = 6600L;    // 66.00 EUR
+
     private final ApplicationConfiguration applicationConfiguration;
     private final PaymentsApi paymentsApi;
+    private final ModificationsApi modificationsApi;
     private final SubscriptionService subscriptionService;
 
-    public ApiController(ApplicationConfiguration applicationConfiguration, PaymentsApi paymentsApi, SubscriptionService subscriptionService) {
+    public ApiController(ApplicationConfiguration applicationConfiguration, PaymentsApi paymentsApi, ModificationsApi modificationsApi, SubscriptionService subscriptionService) {
         this.applicationConfiguration = applicationConfiguration;
         this.paymentsApi = paymentsApi;
+        this.modificationsApi = modificationsApi;
         this.subscriptionService = subscriptionService;
     }
 
@@ -138,6 +144,65 @@ public class ApiController {
     }
 
     /**
+     * Pre-authorize a payment (reserve funds without capturing).
+     * Amount: use request body amount if set, else query param amount (minor units), else default 10 EUR.
+     * @see <a href="https://docs.adyen.com/online-payments/adjust-authorisation/adjust-with-preauth/#pre-authorize">Adjust an authorization</a>
+     */
+    @PostMapping("/api/preauthorisation")
+    public ResponseEntity<PaymentResponse> preauthorisation(
+            @RequestBody PaymentRequest body,
+            @RequestParam(required = false) Long amount) throws IOException, ApiException {
+        long amountMinor = DEFAULT_PREAUTH_CENTS;
+        if (body.getAmount() != null && body.getAmount().getValue() != null) {
+            amountMinor = body.getAmount().getValue();
+        } else if (amount != null) {
+            amountMinor = amount;
+        }
+        String currency = (body.getAmount() != null && body.getAmount().getCurrency() != null) ? body.getAmount().getCurrency() : "EUR";
+        var paymentRequest = new PaymentRequest();
+        paymentRequest.setAmount(new Amount().currency(currency).value(amountMinor));
+        paymentRequest.setMerchantAccount(applicationConfiguration.getAdyenMerchantAccount());
+        paymentRequest.setChannel(PaymentRequest.ChannelEnum.WEB);
+        paymentRequest.setPaymentMethod(body.getPaymentMethod());
+
+        var orderRef = UUID.randomUUID().toString();
+        paymentRequest.setReference(orderRef);
+        paymentRequest.setReturnUrl("http://localhost:8080/handleShopperRedirect");
+
+        var authenticationData = new AuthenticationData();
+        authenticationData.setAttemptAuthentication(AuthenticationData.AttemptAuthenticationEnum.ALWAYS);
+        paymentRequest.setAuthenticationData(authenticationData);
+
+        paymentRequest.putAdditionalDataItem("authorisationType", "PreAuth");
+        paymentRequest.putAdditionalDataItem("manualCapture", "true");
+
+        paymentRequest.setOrigin("https://localhost:8080");
+        paymentRequest.setBrowserInfo(body.getBrowserInfo());
+        paymentRequest.setShopperIP("192.168.0.1");
+        paymentRequest.setShopperInteraction(PaymentRequest.ShopperInteractionEnum.ECOMMERCE);
+
+        var billingAddress = new BillingAddress();
+        billingAddress.setCity("Amsterdam");
+        billingAddress.setCountry("NL");
+        billingAddress.setPostalCode("1012KK");
+        billingAddress.setStreet("Rokin");
+        billingAddress.setHouseNumberOrName("49");
+        paymentRequest.setBillingAddress(billingAddress);
+
+        paymentRequest.setCountryCode("NL");
+        paymentRequest.setShopperReference(DEFAULT_SHOPPER_REFERENCE);
+        paymentRequest.setShopperEmail("example@email.com");
+
+        var requestOptions = new RequestOptions();
+        requestOptions.setIdempotencyKey(UUID.randomUUID().toString());
+
+        log.info("Preauthorisation request {}", paymentRequest);
+        var response = paymentsApi.payments(paymentRequest, requestOptions);
+        log.info("Preauthorisation response pspReference={}", response != null ? response.getPspReference() : null);
+        return ResponseEntity.ok().body(response);
+    }
+
+    /**
      * Zero-auth payment to tokenize a card for subscriptions.
      * Uses storePaymentMethod and recurringProcessingModel.
      * Recurring processing models: Subscription (fixed schedule), CardOnFile (one-click/omnichannel),
@@ -194,8 +259,65 @@ public class ApiController {
      * For testing: copy/paste the token into the URL.
      */
     @GetMapping("/makepaymentwithtoken/{token}")
-    public ResponseEntity<?> makePaymentWithToken(@PathVariable String token) throws IOException, ApiException {
-        var response = subscriptionService.chargeWithToken(token);
+    public ResponseEntity<?> makePaymentWithToken(
+            @PathVariable String token,
+            @RequestParam(required = false) Long amount) throws IOException, ApiException {
+        var response = subscriptionService.chargeWithToken(token, amount);
+        return ResponseEntity.ok().body(response);
+    }
+
+    /**
+     * Adjust a pre-authorisation amount.
+     * Pass the token (pspReference from AUTHORISATION). Optional query param: amount. Default 66 EUR.
+     */
+    @GetMapping("/api/modify-amount/{token}")
+    public ResponseEntity<?> modifyAmount(
+            @PathVariable String token,
+            @RequestParam(required = false) Long amount) throws IOException, ApiException {
+        long amountMinor = amount != null ? amount : DEFAULT_MODIFY_CENTS;
+        var request = new PaymentAmountUpdateRequest()
+                .amount(new Amount().currency("EUR").value(amountMinor))
+                .merchantAccount(applicationConfiguration.getAdyenMerchantAccount())
+                .reference(UUID.randomUUID().toString());
+        log.info("Modify amount request for token, amount={} cents", amountMinor);
+        var response = modificationsApi.updateAuthorisedAmount(token, request);
+        log.info("Modify amount response: status={}", response != null ? response.getStatus() : null);
+        return ResponseEntity.ok().body(response);
+    }
+
+    /**
+     * Capture by token in path. Optional query param: amount. Default 66 EUR.
+     */
+    @GetMapping("/api/capture/{token}")
+    public ResponseEntity<?> captureGet(
+            @PathVariable String token,
+            @RequestParam(required = false) Long amount) throws IOException, ApiException {
+        long amountMinor = amount != null ? amount : DEFAULT_MODIFY_CENTS;
+        var request = new PaymentCaptureRequest()
+                .amount(new Amount().currency("EUR").value(amountMinor))
+                .merchantAccount(applicationConfiguration.getAdyenMerchantAccount())
+                .reference(UUID.randomUUID().toString());
+        log.info("Capture request for token, amount={} cents", amountMinor);
+        var response = modificationsApi.captureAuthorisedPayment(token, request);
+        log.info("Capture response: status={}", response != null ? response.getStatus() : null);
+        return ResponseEntity.ok().body(response);
+    }
+
+    /**
+     * Refund by token (capture pspReference) in path. Optional query param: amount (minor units). Default 66 EUR.
+     */
+    @GetMapping("/api/refund/{token}")
+    public ResponseEntity<?> refundGet(
+            @PathVariable String token,
+            @RequestParam(required = false) Long amount) throws IOException, ApiException {
+        long amountMinor = amount != null ? amount : DEFAULT_MODIFY_CENTS;
+        var request = new PaymentRefundRequest()
+                .amount(new Amount().currency("EUR").value(amountMinor))
+                .merchantAccount(applicationConfiguration.getAdyenMerchantAccount())
+                .reference(UUID.randomUUID().toString());
+        log.info("Refund request for token, amount={} cents", amountMinor);
+        var response = modificationsApi.refundCapturedPayment(token, request);
+        log.info("Refund response: status={}", response != null ? response.getStatus() : null);
         return ResponseEntity.ok().body(response);
     }
 
