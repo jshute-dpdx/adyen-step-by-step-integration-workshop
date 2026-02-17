@@ -269,7 +269,7 @@ public class ApiController {
      * Adjust a pre-authorisation amount.
      * Pass the token (pspReference from AUTHORISATION). Optional query param: amount. Default 66 EUR.
      */
-    @GetMapping("/api/modify-amount/{token}")
+    @GetMapping("/adjustAuthorisation/{token}")
     public ResponseEntity<?> modifyAmount(
             @PathVariable String token,
             @RequestParam(required = false) Long amount) throws IOException, ApiException {
@@ -277,7 +277,7 @@ public class ApiController {
         var request = new PaymentAmountUpdateRequest()
                 .amount(new Amount().currency("EUR").value(amountMinor))
                 .merchantAccount(applicationConfiguration.getAdyenMerchantAccount())
-                .reference(UUID.randomUUID().toString());
+                .reference(token);
         log.info("Modify amount request for token, amount={} cents", amountMinor);
         var response = modificationsApi.updateAuthorisedAmount(token, request);
         log.info("Modify amount response: status={}", response != null ? response.getStatus() : null);
@@ -287,7 +287,7 @@ public class ApiController {
     /**
      * Capture by token in path. Optional query param: amount. Default 66 EUR.
      */
-    @GetMapping("/api/capture/{token}")
+    @GetMapping("/capture/{token}")
     public ResponseEntity<?> captureGet(
             @PathVariable String token,
             @RequestParam(required = false) Long amount) throws IOException, ApiException {
@@ -295,7 +295,7 @@ public class ApiController {
         var request = new PaymentCaptureRequest()
                 .amount(new Amount().currency("EUR").value(amountMinor))
                 .merchantAccount(applicationConfiguration.getAdyenMerchantAccount())
-                .reference(UUID.randomUUID().toString());
+                .reference(token);
         log.info("Capture request for token, amount={} cents", amountMinor);
         var response = modificationsApi.captureAuthorisedPayment(token, request);
         log.info("Capture response: status={}", response != null ? response.getStatus() : null);
@@ -305,7 +305,7 @@ public class ApiController {
     /**
      * Refund by token (capture pspReference) in path. Optional query param: amount (minor units). Default 66 EUR.
      */
-    @GetMapping("/api/refund/{token}")
+    @GetMapping("/refund/{token}")
     public ResponseEntity<?> refundGet(
             @PathVariable String token,
             @RequestParam(required = false) Long amount) throws IOException, ApiException {
@@ -313,7 +313,7 @@ public class ApiController {
         var request = new PaymentRefundRequest()
                 .amount(new Amount().currency("EUR").value(amountMinor))
                 .merchantAccount(applicationConfiguration.getAdyenMerchantAccount())
-                .reference(UUID.randomUUID().toString());
+                .reference(token);
         log.info("Refund request for token, amount={} cents", amountMinor);
         var response = modificationsApi.refundCapturedPayment(token, request);
         log.info("Refund response: status={}", response != null ? response.getStatus() : null);
