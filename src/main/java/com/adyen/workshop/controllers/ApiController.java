@@ -80,8 +80,7 @@ public class ApiController {
     
         var orderRef = UUID.randomUUID().toString();
         paymentRequest.setReference(orderRef);
-        // The returnUrl field basically means: Once done with the payment, where should the application redirect you?
-        paymentRequest.setReturnUrl("http://localhost:8080/handleShopperRedirect");
+        paymentRequest.setReturnUrl(applicationConfiguration.getBaseUrl() + "/handleShopperRedirect");
 
 
         // Step 12 3DS2 Redirect - Add the following additional parameters to your existing payment request for 3DS2 Redirect:
@@ -95,7 +94,7 @@ public class ApiController {
         //authenticationData.setThreeDSRequestData(new ThreeDSRequestData().nativeThreeDS(ThreeDSRequestData.NativeThreeDSEnum.PREFERRED));
         //paymentRequest.setAuthenticationData(authenticationData);
 
-        paymentRequest.setOrigin("https://localhost:8080");
+        paymentRequest.setOrigin(applicationConfiguration.getBaseUrl());
         paymentRequest.setBrowserInfo(body.getBrowserInfo());
         paymentRequest.setShopperIP("192.168.0.1");
         paymentRequest.setShopperInteraction(PaymentRequest.ShopperInteractionEnum.ECOMMERCE);
@@ -167,7 +166,7 @@ public class ApiController {
 
         var orderRef = UUID.randomUUID().toString();
         paymentRequest.setReference(orderRef);
-        paymentRequest.setReturnUrl("http://localhost:8080/handleShopperRedirect");
+        paymentRequest.setReturnUrl(applicationConfiguration.getBaseUrl() + "/handleShopperRedirect");
 
         var authenticationData = new AuthenticationData();
         authenticationData.setAttemptAuthentication(AuthenticationData.AttemptAuthenticationEnum.ALWAYS);
@@ -176,7 +175,7 @@ public class ApiController {
         paymentRequest.putAdditionalDataItem("authorisationType", "PreAuth");
         paymentRequest.putAdditionalDataItem("manualCapture", "true");
 
-        paymentRequest.setOrigin("https://localhost:8080");
+        paymentRequest.setOrigin(applicationConfiguration.getBaseUrl());
         paymentRequest.setBrowserInfo(body.getBrowserInfo());
         paymentRequest.setShopperIP("192.168.0.1");
         paymentRequest.setShopperInteraction(PaymentRequest.ShopperInteractionEnum.ECOMMERCE);
@@ -218,13 +217,13 @@ public class ApiController {
         paymentRequest.setPaymentMethod(body.getPaymentMethod());
         var orderRef = UUID.randomUUID().toString();
         paymentRequest.setReference(orderRef);
-        paymentRequest.setReturnUrl("http://localhost:8080/handleShopperRedirect");
+        paymentRequest.setReturnUrl(applicationConfiguration.getBaseUrl() + "/handleShopperRedirect");
 
         var authenticationData = new AuthenticationData();
         authenticationData.setAttemptAuthentication(AuthenticationData.AttemptAuthenticationEnum.ALWAYS);
         paymentRequest.setAuthenticationData(authenticationData);
 
-        paymentRequest.setOrigin("https://localhost:8080");
+        paymentRequest.setOrigin(applicationConfiguration.getBaseUrl());
         paymentRequest.setBrowserInfo(body.getBrowserInfo());
         paymentRequest.setShopperIP("192.168.0.1");
         paymentRequest.setShopperInteraction(PaymentRequest.ShopperInteractionEnum.ECOMMERCE);
@@ -352,7 +351,7 @@ public class ApiController {
         log.info("PaymentsDetailsResponse {}", paymentsDetailsResponse);
 
         // Handle response and redirect user accordingly
-        var redirectURL = "http://localhost:8080/result/"; // Update your url here by replacing `http://localhost:8080` with where your application is hosted (if needed)
+        var redirectURL = applicationConfiguration.getBaseUrl() + "/result/";
         switch (paymentsDetailsResponse.getResultCode()) {
             case AUTHORISED:
                 redirectURL += "success";

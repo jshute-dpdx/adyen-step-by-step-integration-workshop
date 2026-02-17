@@ -48,7 +48,7 @@ public class SubscriptionService {
         paymentRequest.setChannel(PaymentRequest.ChannelEnum.WEB);
         paymentRequest.setPaymentMethod(paymentMethod);
         paymentRequest.setReference(UUID.randomUUID().toString());
-        paymentRequest.setReturnUrl("http://localhost:8080/handleShopperRedirect");
+        paymentRequest.setReturnUrl(applicationConfiguration.getBaseUrl() + "/handleShopperRedirect");
         paymentRequest.setShopperReference(DEFAULT_SHOPPER_REFERENCE);
         paymentRequest.setShopperInteraction(PaymentRequest.ShopperInteractionEnum.CONTAUTH);
         paymentRequest.setRecurringProcessingModel(PaymentRequest.RecurringProcessingModelEnum.SUBSCRIPTION);

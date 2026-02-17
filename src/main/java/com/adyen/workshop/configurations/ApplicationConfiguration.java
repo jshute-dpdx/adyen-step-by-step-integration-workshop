@@ -8,6 +8,8 @@ public class ApplicationConfiguration {
     @Value("${server.port}")
     private int serverPort;
 
+    private static final String BASE_URL = "https://curly-waffle-4j6r4prq7693jjgj-8080.app.github.dev";
+
     @Value("${ADYEN_API_KEY:#{null}}") // Don't edit @Value(...)
     private String adyenApiKey;
 
@@ -22,6 +24,10 @@ public class ApplicationConfiguration {
 
     public int getServerPort() {
         return serverPort;
+    }
+
+    public String getBaseUrl() {
+        return BASE_URL;
     }
 
     public void setServerPort(int serverPort) {
