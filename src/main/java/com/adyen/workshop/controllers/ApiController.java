@@ -320,6 +320,20 @@ public class ApiController {
         return ResponseEntity.ok().body(response);
     }
 
+    /**
+     * Cancel by token (authorisation pspReference) in path. Use for pre-auth that has not been captured.
+     */
+    @GetMapping("/cancel/{token}")
+    public ResponseEntity<?> cancelGet(@PathVariable String token) throws IOException, ApiException {
+        var request = new PaymentCancelRequest()
+                .merchantAccount(applicationConfiguration.getAdyenMerchantAccount())
+                .reference(token);
+        log.info("Cancel request for token");
+        var response = modificationsApi.cancelAuthorisedPaymentByPspReference(token, request);
+        log.info("Cancel response: status={}", response != null ? response.getStatus() : null);
+        return ResponseEntity.ok().body(response);
+    }
+
     // Step 13 - Handle details call (triggered after Native 3DS2 flow)
     @PostMapping("/api/payments/details")
     public ResponseEntity<PaymentDetailsResponse> paymentsDetails(@RequestBody PaymentDetailsRequest detailsRequest) throws IOException, ApiException
